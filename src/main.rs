@@ -7,6 +7,7 @@ use axum::{
 
 use std::collections::HashMap;
 use time::Date;
+use time::macros::date;
 use uuid::Uuid;
 
 pub struct Person{
@@ -22,19 +23,18 @@ async fn main() {
 
     let mut people: HashMap<Uuid, Person> = HashMap::new();
 
-    let person: Person{
-        id: Uuid:now_v7,
+    let person = Person{
+        id: Uuid::now_v7(),
         name: String::from("Luid"),
-        nick: Sting::from("luidooo"),
-        birth_date: date!(2004 - 06 - 31)
-        stack: vec!["C".to_string(), "C++".to_string()]
-    };
-
-    //people.insert(person.id, person);
-    HashMap::insert(&mut people, person.id, person);
+        nick: String::from("luidooo"),
+        birth_date: date!(2004 - 06 - 17),
+        stack: vec!["C".to_string(), "C++".to_string()], 
+    }; 
+    
+    people.insert(person.id, person); 
 
     let app = Router::new()
-        .route("/pessoas", get(search_peaple))
+        .route("/pessoas", get(search_people))
         .route("/pessoas/:id", get(find_person))
         .route("/pessoas", post(create_person))
         .route("/contagem-pessoas", get(count_people));
@@ -49,7 +49,7 @@ async fn main() {
         .unwrap();
 }
 
-async fn search_peaple() -> impl IntoResponse {
+async fn search_people() -> impl IntoResponse {
     return (StatusCode::NOT_FOUND, "Busca Pessoas")
 }
 
