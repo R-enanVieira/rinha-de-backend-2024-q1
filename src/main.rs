@@ -8,7 +8,9 @@ use axum::{
     Router,
 };
 
+use tokio::sync::Mutex;
 use serde::Serialize;
+use serde::Deserialize;
 use time::{macros::date, Date};
 use uuid::Uuid;
 
@@ -38,7 +40,7 @@ pub struct NewPerson{
 }
 
 
-type AppState = Arc<HashMap<Uuid, Person>>;
+type AppState = Arc<Mutex<HashMap<Uuid, Person>>>;
 
 #[tokio::main]
 async fn main() {
@@ -50,14 +52,15 @@ async fn main() {
         name: String::from("Luid"),
         nick: String::from("luidooo"),
         birth_date: date!(2004 - 06 - 17),
-        stack: vec!["C".to_string(), "C++".to_string()].into(), 
-    }; 
-    
-    println!("{}", person.id);
+        stack: vec!["C".to_string(), "C++".to_string()].into(),
+    };
 
-    people.insert(person.id, person); 
-    let AppState = Arc::new(people);
-        
+    //println!("{}", person.id);
+
+    people.insert(person.id, person);
+
+    let AppState = Arc::new(Mutex::new(people));
+
     let app = Router::new()
         .route("/pessoas", get(search_people))
         .route("/pessoas/:id", get(find_person))
@@ -80,16 +83,28 @@ async fn search_people() -> impl IntoResponse {
 }
 
 async fn find_person(State(people): State<AppState>, Path(person_id): Path<Uuid>) -> impl IntoResponse {
-    match people.get(&person_id) {
+    //let my_people = people.lock().await;
+    match people.lock().await.get(&person_id) {
         Some(person) => Ok(Json(person.clone())),
         None => Err(StatusCode::NOT_FOUND),
     }
 }
 
-async fn create_person(State(people): State<AppState>, Json(person): Json<NewPerson>) -> impl IntoResponse {
-    return (StatusCode::NOT_FOUND, "Create")
+async fn create_person(State(people): State<AppState>, Json(new_person): Json<NewPerson>) -> impl IntoResponse {
+    let id = Uuid::now_v7();
+    let person = Person {
+        id,
+        name: new_person.name,
+        birth_date: new_person.birth_date,
+        nick: new_person.nick,
+        stack: new_person.stack,
+    };
+
+    people.lock().await.insert(id, person.clone());
+    (StatusCode::OK, Json(person))
 }
 
-async fn count_people() -> impl IntoResponse {
-    return (StatusCode::NOT_FOUND, "Count")
+async fn count_people(State(people): State<AppState>) -> impl IntoResponse {
+    let count = people.lock().await.len();
+    (StatusCode::NOT_FOUND, Json(count))
 }
