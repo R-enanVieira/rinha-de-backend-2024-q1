@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, env, net::SocketAddr, sync::Arc};
 
 use axum::{
     extract::{State, Path, Json},
@@ -8,72 +8,71 @@ use axum::{
     Router,
 };
 
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 use serde::Serialize;
 use serde::Deserialize;
-use time::{macros::date, Date};
+use time::Date;
 use uuid::Uuid;
 
-time::serde::format_description!(date_format, Date, "[year] - [month] - [day]");
+time::serde::format_description!(date_format, Date, "[year]-[month]-[day]");
 
 #[derive(Clone, Serialize)]
 pub struct Person{
-    id: Uuid,
+    pub id: Uuid,
     #[serde(rename = "nome")]
-    name: String,
+    pub name: String,
     #[serde(rename = "apelido")]
-    nick: String,
+    pub nick: String,
     #[serde(rename = "nascimento", with = "date_format")]
-    birth_date: Date,
-    stack: Option<Vec<String>>,
+    pub birth_date: Date,
+    pub stack: Option<Vec<String>>,
 }
 
 #[derive(Clone, Deserialize)]
 pub struct NewPerson{
     #[serde(rename = "nome")]
-    name: String,
+    pub name: String,
     #[serde(rename = "apelido")]
-    nick: String,
+    pub nick: String,
     #[serde(rename = "nascimento", with = "date_format")]
-    birth_date: Date,
-    stack: Option<Vec<String>>,
+    pub birth_date: Date,
+    pub stack: Option<Vec<String>>,
 }
 
 
-type AppState = Arc<Mutex<HashMap<Uuid, Person>>>;
+type AppState = Arc<RwLock<HashMap<Uuid, Person>>>;
 
 #[tokio::main]
 async fn main() {
 
-    let mut people: HashMap<Uuid, Person> = HashMap::new();
+    let port = env::var("PORT")
+        .ok()
+        .and_then(|port|port.parse::<u16>().ok())
+        .unwrap_or(9999);
 
+    let people: HashMap<Uuid, Person> = HashMap::new();
+    let app_state = Arc::new(RwLock::new(people));
+
+    /*
     let person = Person{
         id: Uuid::now_v7(),
-        name: String::from("Luid"),
-        nick: String::from("luidooo"),
-        birth_date: date!(2004 - 06 - 17),
-        stack: vec!["C".to_string(), "C++".to_string()].into(),
+        name: String::from("jao"),
+        nick: String::from("jao123"),
+        birth_date: date!(2003 - 02 - 27),
+        stack: vec!["javascript".to_string(), "angular".to_string()].into(),
     };
-
-    //println!("{}", person.id);
-
     people.insert(person.id, person);
-
-    let AppState = Arc::new(Mutex::new(people));
+    */
 
     let app = Router::new()
         .route("/pessoas", get(search_people))
         .route("/pessoas/:id", get(find_person))
         .route("/pessoas", post(create_person))
         .route("/contagem-pessoas", get(count_people))
-        .with_state(AppState);
+        .with_state(app_state);
 
-    // run our app with hyper, listening globally on port 3000
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
-        .await
-        .unwrap();
-
-    axum::serve(listener, app)
+    axum::Server::bind(&SocketAddr::from(([0, 0, 0, 0], port)))
+        .serve(app.into_make_service())
         .await
         .unwrap();
 }
@@ -82,15 +81,20 @@ async fn search_people() -> impl IntoResponse {
     return (StatusCode::NOT_FOUND, "Busca Pessoas")
 }
 
-async fn find_person(State(people): State<AppState>, Path(person_id): Path<Uuid>) -> impl IntoResponse {
-    //let my_people = people.lock().await;
-    match people.lock().await.get(&person_id) {
+async fn find_person(
+    State(people): State<AppState>,
+    Path(person_id): Path<Uuid>,
+) -> impl IntoResponse {
+    match people.read().await.get(&person_id) {
         Some(person) => Ok(Json(person.clone())),
         None => Err(StatusCode::NOT_FOUND),
     }
 }
 
-async fn create_person(State(people): State<AppState>, Json(new_person): Json<NewPerson>) -> impl IntoResponse {
+async fn create_person(
+    State(people): State<AppState>,
+    Json(new_person): Json<NewPerson>,
+) -> impl IntoResponse {
     let id = Uuid::now_v7();
     let person = Person {
         id,
@@ -100,11 +104,11 @@ async fn create_person(State(people): State<AppState>, Json(new_person): Json<Ne
         stack: new_person.stack,
     };
 
-    people.lock().await.insert(id, person.clone());
-    (StatusCode::OK, Json(person))
+    people.write().await.insert(id, person.clone());
+
+    (StatusCode::CREATED, Json(person))
 }
 
 async fn count_people(State(people): State<AppState>) -> impl IntoResponse {
-    let count = people.lock().await.len();
-    (StatusCode::NOT_FOUND, Json(count))
+    Json(people.read().await.len())
 }
