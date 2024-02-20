@@ -71,7 +71,9 @@ async fn main() {
         .route("/contagem-pessoas", get(count_people))
         .with_state(app_state);
 
-    axum::Server::bind(&SocketAddr::from(([0, 0, 0, 0], port)))
+        let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+        println!("listening on {}", addr);
+        axum_server::bind(addr)
         .serve(app.into_make_service())
         .await
         .unwrap();
@@ -95,6 +97,18 @@ async fn create_person(
     State(people): State<AppState>,
     Json(new_person): Json<NewPerson>,
 ) -> impl IntoResponse {
+    if new_person.name.len() > 100 || new_person.nick.len() > 32 {
+        return Err(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    match new_person.stack {
+        Some(ref stack) => {
+            if stack.iter().any(|tech| tech.len() > 32)
+               return Err(StatusCode::UNPROCESSABLE_ENTITY)
+        }
+        None => {}
+    };
+
     let id = Uuid::now_v7();
     let person = Person {
         id,
@@ -105,10 +119,10 @@ async fn create_person(
     };
 
     people.write().await.insert(id, person.clone());
-
-    (StatusCode::CREATED, Json(person))
+    
+    Ok((StatusCode::CREATED, Json(person))) 
 }
 
 async fn count_people(State(people): State<AppState>) -> impl IntoResponse {
-    Json(people.read().await.len())
+    Json(people.read().await.len()) 
 }
